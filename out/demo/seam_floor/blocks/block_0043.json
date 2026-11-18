@@ -1,0 +1,1 @@
+{"block_index": 43, "block_rect": [3, 5, 96, 160, 128, 192], "covered": true, "attempt": 1, "samples": 64, "job_seed": 20261118, "bounces": 3, "rays": 0, "texels": 0, "values": {}, "seed_scheme": "PCG32(blake2b(job_seed, block_index, texel_index))", "units": "linear radiance W/(m^2 sr)"}

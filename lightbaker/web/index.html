@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>室内展厅光照烘焙 · 出图任务面板</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <h1>室内展厅光照烘焙 · 出图任务面板</h1>
+  <p class="sub">路径追踪内核 · 图集纹素任务 · 确定性 PCG32 采样 · 直接光 + 多弹射间接光</p>
+</header>
+
+<main>
+  <section class="card" id="config-card">
+    <h2>1. 划分图集并启动烘焙</h2>
+    <form id="bake-form">
+      <div class="grid">
+        <label>场景
+          <select name="scene" id="f-scene"></select>
+        </label>
+        <label>图集尺寸（纹素）
+          <select name="atlas_size" id="f-atlas"></select>
+        </label>
+        <label>纹素密度（纹素/米）
+          <input name="density" id="f-density" type="number" min="4" max="120"
+                 step="1" value="12">
+        </label>
+        <label>质量预设（每纹素采样）
+          <select name="quality" id="f-quality">
+            <option value="preview">preview (4)</option>
+            <option value="medium" selected>medium (16)</option>
+            <option value="high">high (64)</option>
+            <option value="reference">reference (128)</option>
+          </select>
+        </label>
+        <label>采样数覆盖（0=用预设）
+          <input name="samples" id="f-samples" type="number" min="0"
+                 max="1024" value="0">
+        </label>
+        <label>间接弹射次数
+          <input name="bounces" id="f-bounces" type="number" min="0"
+                 max="8" value="3">
+        </label>
+        <label>随机种子（可复核）
+          <input name="job_seed" id="f-seed" type="number" value="20261118">
+        </label>
+        <label>工作进程数
+          <input name="workers" id="f-workers" type="number" min="1"
+                 max="32" value="0">
+        </label>
+      </div>
+      <details>
+        <summary>故障注入（验证工作节点重试，不会重复提亮）</summary>
+        <div class="grid">
+          <label>块索引
+            <input id="fail-id" type="number" min="0" value="3">
+          </label>
+          <label>前 N 次尝试强制失败
+            <input id="fail-n" type="number" min="1" max="5" value="1">
+          </label>
+        </div>
+      </details>
+      <div class="actions">
+        <button type="submit" class="primary">启动烘焙</button>
+        <button type="button" id="retry-btn" disabled>重试失败/缺失块</button>
+        <span id="form-error" class="error"></span>
+      </div>
+      <p id="scene-desc" class="hint"></p>
+    </form>
+  </section>
+
+  <section class="card" id="status-card">
+    <h2>2. 块任务状态</h2>
+    <div class="status-row">
+      <span>任务：<b id="job-id">—</b></span>
+      <span>状态：<b id="job-status">—</b></span>
+      <span>图表：<b id="chart-count">—</b></span>
+      <span>已完成块：<b id="block-done">0</b>/<b id="block-total">0</b></span>
+      <span>失败：<b id="block-failed">0</b></span>
+    </div>
+    <div id="block-grid" class="block-grid"></div>
+    <div class="legend">
+      <span><i class="sw done"></i>已完成</span>
+      <span><i class="sw pending"></i>待计算</span>
+      <span><i class="sw failed"></i>失败（可重试）</span>
+      <span><i class="sw empty"></i>无覆盖</span>
+      <span><i class="sw missing"></i>缺块→图集洋红标记</span>
+    </div>
+    <pre id="error-log" class="error-log"></pre>
+  </section>
+
+  <section class="card" id="result-card">
+    <h2>3. 结果区：照明贴图与块边界</h2>
+    <div class="result-tabs">
+      <button data-img="lightmap" class="tab active">光照贴图（含块边界）</button>
+      <button data-img="lightmap_denoised" class="tab">光照贴图（边缘保持降噪·预览用）</button>
+      <button data-img="lightmap_clean" class="tab">光照贴图（原始无降噪）</button>
+      <button data-img="coverage_mask" class="tab">覆盖掩码（白=有效 / 黄=扩张）</button>
+      <button data-img="chart_ids" class="tab">图表 ID 调试图</button>
+    </div>
+    <div class="img-wrap">
+      <img id="atlas-img" alt="lightmap atlas">
+    </div>
+    <pre id="metrics" class="metrics"></pre>
+  </section>
+
+  <section class="card" id="preview-card">
+    <h2>4. 三维运行时预览（采样烘焙贴图，非截图回贴）</h2>
+    <div class="preview-row">
+      <canvas id="view3d" width="640" height="480"></canvas>
+      <div class="preview-controls">
+        <label>显示模式
+          <select id="view-mode">
+            <option value="lightmap" selected>烘焙光照贴图</option>
+            <option value="albedo">材质反照率</option>
+            <option value="normal">法线</option>
+            <option value="missing">缺块高亮</option>
+          </select>
+        </label>
+        <p class="hint">鼠标左键拖动旋转，滚轮缩放，右键平移。</p>
+        <p class="hint" id="missing-note"></p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

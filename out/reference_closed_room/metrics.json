@@ -1,0 +1,23 @@
+{
+  "scene": "closed_room",
+  "atlas_size": 256,
+  "samples_per_texel": 128,
+  "job_seed": 20261118,
+  "bounces": 3,
+  "texels_covered": 39250,
+  "texels_real_coverage": 33739,
+  "texels_dilated": 5511,
+  "texels_baked": 33739,
+  "blocks_total": 49,
+  "blocks_missing": [],
+  "mean_radiance": [
+    0.38810883737658763,
+    0.3330759260351406,
+    0.26144237240935814
+  ],
+  "total_radiance_energy": 33152.85693546767,
+  "units": "linear radiance W/(m^2 sr)",
+  "indirect": "explicit Lambertian path bounces (depth>=1), not an ambient constant",
+  "rng": "PCG32, seed=blake2b(job_seed, block, texel, sample)",
+  "elapsed_seconds": 189.07
+}

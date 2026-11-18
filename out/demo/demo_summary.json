@@ -1,0 +1,71 @@
+{
+  "closed_room": {
+    "scene": "closed_room",
+    "atlas_size": 256,
+    "samples_per_texel": 64,
+    "job_seed": 20261118,
+    "bounces": 3,
+    "texels_covered": 39250,
+    "texels_real_coverage": 33739,
+    "texels_dilated": 5511,
+    "texels_baked": 33739,
+    "blocks_total": 49,
+    "blocks_missing": [],
+    "mean_radiance": [
+      0.38802124664489995,
+      0.3329919927075466,
+      0.2613525813879242
+    ],
+    "total_radiance_energy": 33144.04042595926,
+    "units": "linear radiance W/(m^2 sr)",
+    "indirect": "explicit Lambertian path bounces (depth>=1), not an ambient constant",
+    "rng": "PCG32, seed=blake2b(job_seed, block, texel, sample)",
+    "elapsed_seconds": 79.52
+  },
+  "thin_wall": {
+    "scene": "thin_wall",
+    "atlas_size": 256,
+    "samples_per_texel": 64,
+    "job_seed": 20261118,
+    "bounces": 3,
+    "texels_covered": 47344,
+    "texels_real_coverage": 39721,
+    "texels_dilated": 7623,
+    "texels_baked": 39721,
+    "blocks_total": 55,
+    "blocks_missing": [],
+    "mean_radiance": [
+      0.342634579604086,
+      0.31925311405389417,
+      0.24221633208313498
+    ],
+    "total_radiance_energy": 35911.91600646274,
+    "units": "linear radiance W/(m^2 sr)",
+    "indirect": "explicit Lambertian path bounces (depth>=1), not an ambient constant",
+    "rng": "PCG32, seed=blake2b(job_seed, block, texel, sample)",
+    "elapsed_seconds": 112.13
+  },
+  "seam_floor": {
+    "scene": "seam_floor",
+    "atlas_size": 256,
+    "samples_per_texel": 64,
+    "job_seed": 20261118,
+    "bounces": 3,
+    "texels_covered": 33407,
+    "texels_real_coverage": 27908,
+    "texels_dilated": 5499,
+    "texels_baked": 27908,
+    "blocks_total": 43,
+    "blocks_missing": [],
+    "mean_radiance": [
+      0.33800880695832536,
+      0.3169578035370396,
+      0.261334118111325
+    ],
+    "total_radiance_energy": 25572.120733955446,
+    "units": "linear radiance W/(m^2 sr)",
+    "indirect": "explicit Lambertian path bounces (depth>=1), not an ambient constant",
+    "rng": "PCG32, seed=blake2b(job_seed, block, texel, sample)",
+    "elapsed_seconds": 73.11
+  }
+}
