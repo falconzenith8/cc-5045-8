@@ -1,0 +1,17 @@
+{
+  "lock_version": 1,
+  "task_protocol": "lightbaker-bake",
+  "protocol_version": 2,
+  "result_schema": 2,
+  "atlas_schema": 2,
+  "migration": "v1->v2",
+  "kernel_revision": "pathtracer-2026.11-r1",
+  "units": "linear radiance W/(m^2 sr)",
+  "seed_scheme": "PCG32(blake2b(job_seed, block_index, texel_index))",
+  "notes": [
+    "Bump protocol_version together with kernel_revision and migration.",
+    "Tasks/results from a different lock are not interchangeable.",
+    "Legacy v1 results are only converted when atlas provenance and exact",
+    "coverage are proven; missing evidence is a rejection, not a default."
+  ]
+}

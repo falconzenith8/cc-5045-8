@@ -27,6 +27,12 @@ async function loadCapabilities() {
     if (size === 256) opt.selected = true;
     atlasSel.appendChild(opt);
   }
+  $("protocol-note").textContent =
+    "任务协议 " + capabilities.protocol + " v" + capabilities.protocol_version +
+    " · 结果模式 v" + capabilities.result_schema +
+    " · 迁移 " + capabilities.migration +
+    " · 内核 " + capabilities.kernel_revision +
+    " · 图集修订与纹素覆盖随每个任务下发";
   sceneSel.addEventListener("change", updateSceneDesc);
   updateSceneDesc();
 }
@@ -100,6 +106,28 @@ async function refreshJob() {
   $("job-id").textContent = currentJob;
   $("job-status").textContent = data.status;
   $("chart-count").textContent = data.chart_count;
+  $("protocol-version").textContent =
+    (data.protocol || "lightbaker-bake") + " v" + data.protocol_version +
+    " · result v" + data.result_schema + " · " + data.migration;
+  $("atlas-revision").textContent = data.atlas_revision || "—";
+  const migrated = data.migration_report
+    ? data.migration_report.converted.length : 0;
+  const rejected = data.migration_report
+    ? data.migration_report.rejected.length : 0;
+  const unresolved = data.migration_report
+    ? (data.migration_report.rejected_unresolved || []).length : 0;
+  $("migrated-count").textContent = migrated;
+  $("rejected-count").textContent = unresolved
+    ? rejected + "（待重算 " + unresolved + "）" : rejected;
+  if (data.verification) {
+    const v = data.verification;
+    $("coverage-ok").textContent = v.coverage_ok
+      ? "通过（" + v.baked_texels + "/" + v.real_texels + " 纹素，块边界对齐）"
+      : "未通过（缺 " + v.uncovered_texels + "，重复 " + v.duplicate_texels +
+        "，缺块 " + v.missing_blocks.length + "）";
+  } else {
+    $("coverage-ok").textContent = "—";
+  }
   const done = data.blocks.filter((b) => b.state === "done").length;
   const total = data.blocks.filter((b) => b.covered).length;
   const failed = new Set(data.errors.map((e) => e.block_index));
@@ -111,11 +139,37 @@ async function refreshJob() {
     ? data.errors.map((e) => "块 " + e.block_index + " 失败（第 " +
         e.attempts + " 次尝试）: " + e.error).join("\n")
     : "（无错误）";
+  renderMigrationLog(data);
   loadResults(data);
   if (data.status === "done" || data.status === "partial") {
     clearInterval(pollTimer);
     pollTimer = null;
   }
+}
+
+function renderMigrationLog(data) {
+  const report = data.migration_report || { converted: [], rejected: [] };
+  const lines = [];
+  if (report.converted.length) {
+    lines.push("已转换旧结果 " + report.converted.length +
+      " 块（协议 " + report.from_protocol + "→" + report.to_protocol +
+      "，图集修订 " + (data.atlas_revision || "?") + "）");
+  }
+  if (report.rejected.length) {
+    lines.push("拒收旧结果 " + report.rejected.length + " 块（按下重算）：");
+    for (const r of report.rejected.slice(0, 8)) {
+      lines.push("  块 " + r.block_index + ": " + r.reasons.join("; "));
+    }
+    if (report.rejected.length > 8) lines.push("  …");
+  }
+  if (data.verification && !data.verification.coverage_ok) {
+    const v = data.verification;
+    lines.push("覆盖/边界校验未通过：未覆盖 " + v.uncovered_texels +
+      "，未知 " + v.unknown_texels + "，重复 " + v.duplicate_texels +
+      "，缺块 " + v.missing_blocks.length);
+  }
+  $("migration-log").textContent = lines.length ? lines.join("\n")
+    : "（无旧结果需要转换）";
 }
 
 function renderBlockGrid(blocks, failed) {
@@ -127,13 +181,18 @@ function renderBlockGrid(blocks, failed) {
     if (b.covered) {
       if (b.state === "done") cls = "done";
       else if (failed.has(b.index)) cls = "failed";
+      else if (b.state === "stale" || b.state === "legacy-rejected" ||
+               b.state === "invalid") cls = "stale";
       else cls = "pending";
     }
     cell.className = "cell " + cls;
     const tip = document.createElement("span");
     tip.className = "tip";
+    let extra = "";
+    if (b.coverage) extra += " · 纹素 " + b.coverage.texel_count;
+    if (b.issues && b.issues.length) extra += " · " + b.issues[0];
     tip.textContent = "块 " + b.index + " · " + cls +
-      (b.attempts ? " · 尝试 " + b.attempts : "");
+      (b.attempts ? " · 尝试 " + b.attempts : "") + extra;
     cell.appendChild(tip);
     grid.appendChild(cell);
   }

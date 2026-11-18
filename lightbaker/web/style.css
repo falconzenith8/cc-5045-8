@@ -70,6 +70,7 @@ button.primary:hover { background: #3876c9; }
 .cell.done { background: #3f9d63; }
 .cell.pending { background: #4a5464; }
 .cell.failed { background: #d4574e; }
+.cell.stale { background: #d99a3d; }
 .cell.empty { background: #20252d; }
 .cell.missing { background: #d94fd0; }
 .cell .tip {
@@ -92,6 +93,7 @@ button.primary:hover { background: #3876c9; }
 .sw.done { background: #3f9d63; }
 .sw.pending { background: #4a5464; }
 .sw.failed { background: #d4574e; }
+.sw.stale { background: #d99a3d; }
 .sw.empty { background: #20252d; }
 .sw.missing { background: #d94fd0; }
 .error-log {

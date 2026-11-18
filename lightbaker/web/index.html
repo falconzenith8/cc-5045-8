@@ -67,6 +67,7 @@
         <span id="form-error" class="error"></span>
       </div>
       <p id="scene-desc" class="hint"></p>
+      <p id="protocol-note" class="hint"></p>
     </form>
   </section>
 
@@ -79,15 +80,24 @@
       <span>已完成块：<b id="block-done">0</b>/<b id="block-total">0</b></span>
       <span>失败：<b id="block-failed">0</b></span>
     </div>
+    <div class="status-row">
+      <span>任务协议：<b id="protocol-version">—</b></span>
+      <span>图集修订：<b id="atlas-revision">—</b></span>
+      <span>旧结果转换：<b id="migrated-count">0</b></span>
+      <span>旧结果拒收：<b id="rejected-count">0</b></span>
+      <span>覆盖校验：<b id="coverage-ok">—</b></span>
+    </div>
     <div id="block-grid" class="block-grid"></div>
     <div class="legend">
       <span><i class="sw done"></i>已完成</span>
       <span><i class="sw pending"></i>待计算</span>
       <span><i class="sw failed"></i>失败（可重试）</span>
+      <span><i class="sw stale"></i>结果与任务身份不符（待重算）</span>
       <span><i class="sw empty"></i>无覆盖</span>
       <span><i class="sw missing"></i>缺块→图集洋红标记</span>
     </div>
     <pre id="error-log" class="error-log"></pre>
+    <pre id="migration-log" class="error-log"></pre>
   </section>
 
   <section class="card" id="result-card">

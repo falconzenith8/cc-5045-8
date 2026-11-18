@@ -1,9 +1,12 @@
 """HTTP task panel driven entirely by the baking kernel.
 
 The panel never invents options: allowed scenes, atlas sizes, quality presets
-and block geometry are served from the kernel modules. Block failures raised
-inside worker processes are captured per block and returned to the panel,
-where the failed blocks can be retried without recomputing finished ones.
+and block geometry are served from the kernel modules. Each job exposes its
+protocol version, atlas revision, coverage evidence and legacy migration
+report. Block failures raised inside worker processes are captured per block
+and returned to the panel, where the failed blocks can be retried without
+recomputing finished ones. A block is only `done` when its result matches the
+current task identity (atlas revision + exact texel coverage + compute).
 """
 import json
 import os
@@ -12,7 +15,9 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
-from .baker import (BakeJob, PRESET_SAMPLES, BLOCK_SIZE, default_config)
+from . import protocol
+from .baker import (BakeJob, PRESET_SAMPLES, BLOCK_SIZE, default_config,
+                    execution_evidence)
 from .charts import ATLAS_CHOICES
 from .pathtracer import DEFAULT_BOUNCES
 from .scenes import SCENES
@@ -26,11 +31,12 @@ class JobRegistry:
         os.makedirs(self.workspace, exist_ok=True)
         self.jobs = {}
         self.lock = threading.Lock()
+        self.lock_path = None
 
     def create(self, config):
         job_id = uuid.uuid4().hex[:12]
         job_dir = os.path.join(self.workspace, job_id)
-        job = BakeJob(job_dir, config)
+        job = BakeJob(job_dir, config, lock_path=self.lock_path)
         with self.lock:
             self.jobs[job_id] = {"job": job, "thread": None,
                                  "progress": [], "config": config}
@@ -38,11 +44,68 @@ class JobRegistry:
 
     def get(self, job_id):
         with self.lock:
-            return self.jobs.get(job_id)
+            entry = self.jobs.get(job_id)
+        if entry is not None:
+            return entry
+        return self.adopt(job_id)
+
+    def adopt(self, job_id):
+        """Take over an existing job directory (e.g. a legacy v1 job).
+
+        The config comes from the job's own config.json/manifest.json; the
+        bake protocol then converts or rejects each legacy result based on
+        atlas identity and exact coverage. Adoption never guesses parameters.
+        """
+        job_id = os.path.basename(job_id)
+        job_dir = os.path.join(self.workspace, job_id)
+        if ".." in job_id or not os.path.isdir(job_dir):
+            return None
+        config = None
+        for name in ("config.json", "manifest.json"):
+            path = os.path.join(job_dir, name)
+            if not os.path.exists(path):
+                continue
+            try:
+                with open(path) as f:
+                    doc = json.load(f)
+            except (OSError, ValueError):
+                continue
+            if isinstance(doc, dict):
+                candidate = doc.get("config") if name == "manifest.json" \
+                    else doc
+                if isinstance(candidate, dict):
+                    config = candidate
+                    break
+        if config is None:
+            return None
+        required = ("scene", "atlas_size", "texels_per_metre", "samples",
+                    "job_seed", "bounces")
+        if any(key not in config for key in required):
+            return None
+        config = dict(config)
+        config.setdefault("block_size", BLOCK_SIZE)
+        try:
+            job = BakeJob(job_dir, config, create=False,
+                          lock_path=self.lock_path)
+        except protocol.ProtocolError:
+            raise
+        except Exception:
+            return None
+        entry = {"job": job, "thread": None, "progress": [], "config": config,
+                 "adopted": True}
+        with self.lock:
+            self.jobs.setdefault(job_id, entry)
+            return self.jobs[job_id]
 
     def list_jobs(self):
         with self.lock:
-            return sorted(self.jobs.keys(), reverse=True)
+            known = set(self.jobs.keys())
+        try:
+            on_disk = [name for name in os.listdir(self.workspace)
+                       if os.path.isdir(os.path.join(self.workspace, name))]
+        except OSError:
+            on_disk = []
+        return sorted(known | set(on_disk), reverse=True)
 
 
 REGISTRY = None
@@ -54,22 +117,48 @@ def _panel_payload(entry):
     for i, b in enumerate(job.blocks):
         state = job.block_state(i) if b[6] else "empty"
         attempts = job.block_attempts(i)
-        blocks.append({"index": i, "rect": list(b[:6]), "covered": b[6],
-                       "state": state, "attempts": attempts})
+        blocks.append({
+            "index": i, "rect": list(b[:6]), "covered": b[6],
+            "state": state, "attempts": attempts,
+            "task_id": job.tasks[i]["task_id"],
+            "atlas_revision": job.atlas_identity["revision"],
+            "coverage": {
+                "texel_count": job.tasks[i]["coverage"]["texel_count"],
+                "texel_digest": job.tasks[i]["coverage"]["texel_digest"],
+            },
+            "issues": job.block_issues(i),
+        })
     errors = job._read_errors()
     status = job._read_status()
+    verification = None
+    verification_path = os.path.join(job.dir, "verification.json")
+    if os.path.exists(verification_path):
+        try:
+            with open(verification_path) as f:
+                verification = json.load(f)
+        except (OSError, ValueError):
+            verification = None
     return {
         "job_id": os.path.basename(job.dir),
         "status": status,
+        "protocol": protocol.TASK_PROTOCOL,
+        "protocol_version": protocol.PROTOCOL_VERSION,
+        "result_schema": protocol.RESULT_SCHEMA,
+        "migration": protocol.MIGRATION,
+        "kernel_revision": protocol.KERNEL_REVISION,
         "config": entry["config"],
         "blocks": blocks,
         "block_size": BLOCK_SIZE,
         "errors": errors,
-        "atlas_size": job.atlas.size,
+        "atlas": job.atlas_identity,
+        "atlas_revision": job.atlas_identity["revision"],
+        "compute": job.compute,
         "chart_count": len(job.atlas.charts),
         "progress_events": entry["progress"][-40:],
-        "outputs": {
-            "lightmap": "/api/jobs/%s/file/lightmap.png" % os.path.basename(job.dir),
+        "migration_report": job.migration,
+        "verification": (verification or {}).get("summary"),
+        "execution_evidence": execution_evidence(job),
+        "outputs": {            "lightmap": "/api/jobs/%s/file/lightmap.png" % os.path.basename(job.dir),
             "lightmap_clean": "/api/jobs/%s/file/lightmap_clean.png"
                               % os.path.basename(job.dir),
             "lightmap_denoised": "/api/jobs/%s/file/lightmap_denoised.png"
@@ -82,6 +171,12 @@ def _panel_payload(entry):
                             % os.path.basename(job.dir),
             "metrics": "/api/jobs/%s/file/metrics.json"
                        % os.path.basename(job.dir),
+            "manifest": "/api/jobs/%s/file/manifest.json"
+                        % os.path.basename(job.dir),
+            "verification": "/api/jobs/%s/file/verification.json"
+                            % os.path.basename(job.dir),
+            "migration_report": "/api/jobs/%s/file/migration_report.json"
+                                % os.path.basename(job.dir),
         },
     }
 
@@ -100,7 +195,7 @@ def _run_job(job_id, fail_blocks):
 
 
 class PanelHandler(BaseHTTPRequestHandler):
-    server_version = "LightbakerPanel/1.0"
+    server_version = "LightbakerPanel/2.0"
 
     def log_message(self, fmt, *args):
         pass
@@ -154,6 +249,11 @@ class PanelHandler(BaseHTTPRequestHandler):
                 "quality_presets": PRESET_SAMPLES,
                 "block_size": BLOCK_SIZE,
                 "default_bounces": DEFAULT_BOUNCES,
+                "protocol": protocol.TASK_PROTOCOL,
+                "protocol_version": protocol.PROTOCOL_VERSION,
+                "result_schema": protocol.RESULT_SCHEMA,
+                "migration": protocol.MIGRATION,
+                "kernel_revision": protocol.KERNEL_REVISION,
                 "kernel": "unidirectional path tracer, NEE area lights + "
                           "Lambertian bounce indirect, PCG32 deterministic",
             })
@@ -163,7 +263,10 @@ class PanelHandler(BaseHTTPRequestHandler):
         if path.startswith(prefix):
             rest = path[len(prefix):].split("/")
             job_id = rest[0]
-            entry = REGISTRY.get(job_id)
+            try:
+                entry = REGISTRY.get(job_id)
+            except protocol.ProtocolError as exc:
+                return self._json({"error": str(exc)}, 409)
             if entry is None:
                 return self._json({"error": "unknown job"}, 404)
             if len(rest) == 1:
@@ -174,7 +277,8 @@ class PanelHandler(BaseHTTPRequestHandler):
                            "lightmap_denoised.png",
                            "coverage_mask.png", "chart_ids.png",
                            "runtime_mesh.json", "metrics.json",
-                           "manifest.json"}
+                           "manifest.json", "verification.json",
+                           "migration_report.json"}
                 if name not in allowed:
                     return self._json({"error": "forbidden file"}, 403)
                 ctype = ("image/png" if name.endswith(".png")
@@ -207,6 +311,8 @@ class PanelHandler(BaseHTTPRequestHandler):
                 if body.get("quality") and not body.get("samples"):
                     config["samples"] = PRESET_SAMPLES[body["quality"]]
                 job_id, job = REGISTRY.create(config)
+            except protocol.ProtocolError as exc:  # build lock mismatch
+                return self._json({"error": str(exc)}, 409)
             except Exception as exc:  # e.g. atlas too small -> panel error
                 return self._json({"error": str(exc)}, 400)
             fail_blocks = {int(k): int(v)
@@ -218,10 +324,13 @@ class PanelHandler(BaseHTTPRequestHandler):
             return self._json({"job_id": job_id,
                                "status": _panel_payload(
                                    REGISTRY.get(job_id))}, 201)
-        # retry only missing blocks
+        # retry only blocks whose result does not match the task identity
         if path.endswith("/retry"):
             job_id = path.split("/")[3]
-            entry = REGISTRY.get(job_id)
+            try:
+                entry = REGISTRY.get(job_id)
+            except protocol.ProtocolError as exc:
+                return self._json({"error": str(exc)}, 409)
             if entry is None:
                 return self._json({"error": "unknown job"}, 404)
             job = entry["job"]
@@ -233,16 +342,24 @@ class PanelHandler(BaseHTTPRequestHandler):
                         {"kind": k, **p}),
                     fail_blocks=fail_blocks), daemon=True)
             thread.start()
-            return self._json({"retried": True})
+            return self._json({"retried": True,
+                               "atlas_revision":
+                                   job.atlas_identity["revision"]})
         return self._json({"error": "not found"}, 404)
 
 
-def serve(host="127.0.0.1", port=8000, workspace="out/jobs"):
+def serve(host="127.0.0.1", port=8000, workspace="out/jobs", lock_path=None):
     global REGISTRY
     REGISTRY = JobRegistry(workspace)
+    REGISTRY.lock_path = lock_path
+    # fail fast if the build lock does not match this code/protocol
+    protocol.load_build_lock(lock_path)
     httpd = ThreadingHTTPServer((host, port), PanelHandler)
     print("Lightbaker task panel: http://%s:%d" % (host, port))
     print("Job workspace: %s" % REGISTRY.workspace)
+    print("Protocol: %s v%d, kernel %s"
+          % (protocol.TASK_PROTOCOL, protocol.PROTOCOL_VERSION,
+             protocol.KERNEL_REVISION))
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
